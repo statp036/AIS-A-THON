@@ -1,0 +1,161 @@
+---
+title: "AIS A THON"
+output: word_document
+date: "2023-04-19"
+---
+
+###
+
+Prompt 3: Build a model to predict whether a particular transaction will have an error. 
+
+Solution: Create a descion tree since the y-variable is binary and not necessarily quantitative. Want to predict whether given certain factors might hypothetically lead to a error in a transaction
+
+###
+
+libraries
+```{r}
+library(datasets)
+library(tidyverse) 
+library(caret)
+library(grid)
+library(gridExtra)
+library(GGally)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(ROCR)
+library(readxl)
+```
+
+read dataset
+```{r}
+set1 =read.csv("AIS-A-THON_dataset.csv", header =T, na.strings = "?")
+names(set1)
+head(set1)
+str(set1)
+```
+
+###
+
+dictionary:
+
+account_number_sender, account_number_receiver - nominal data fields with account numbers for both parties: senders and receivers of money
+
+transaction_timestamp - field containing the date and time of the transaction
+
+transfer_amount - the total amount being transferred from sender’s account to the receiver’s account
+
+beginning_balance_sender - this field is to inform if the sender had sufficient funds beforehand
+
+bank_sender - categorical field containing the bank which stores the sender’s money
+
+os_sender, os_receiver - type of operating systems that the sender and receiver have on their phones
+
+unanimous_agreement - binary field indicating whether both parties agreed to the transaction
+
+transaction_error - binary field indicating whether the transaction resulted in an error
+
+###
+
+
+preprocess data
+```{r}
+set2 <- set1[c(4:10)]   #get rid of irrelevant features
+#check structure of dataset
+names(set2)
+dim(set2)
+head(set2)
+#convert to factor since they are going to be used as classifiers
+set2$transaction_error <- as.factor(set2$transaction_error)
+set2$unanimous_agreement <- as.factor(set2$unanimous_agreement)
+str(set2)
+```
+
+run descion tree model
+```{r}
+treeFit <- rpart(transaction_error~.,data=set2, method = 'class')
+print(treeFit)
+```
+
+```{r}
+#function to create a visual plot
+fig <- function(width, heigth){
+     options(repr.plot.width = width, repr.plot.height = heigth)
+}
+```
+
+
+visualize the tree
+```{r}
+fig(20, 20)
+rattle::fancyRpartPlot(treeFit, type = 1, sub = "")
+```
+
+
+Train and test data set for accuracy 
+```{r}
+set.seed(343)
+
+set2[, 'train'] <- ifelse(runif(nrow(set2)) < 0.75, 1, 0)
+
+trainSet <- set2[set2$train == 1,]
+testSet <- set2[set2$train == 0, ]
+
+trainColNum <- grep('train', names(trainSet))
+trainColNum
+
+trainSet <- trainSet[, -trainColNum]
+testSet <- testSet[, -trainColNum]
+```
+
+Descision tree for trained set
+```{r}
+treeFit <- rpart(transaction_error~.,data=trainSet,method = 'class')
+print(treeFit)
+```
+
+```{r}
+rattle::fancyRpartPlot(treeFit, type = 1, sub = "")
+```
+
+check accuracy of the tree
+```{r}
+Prediction1 <- predict(treeFit,newdata=testSet,type = 'class')
+confusionMatrix(Prediction1,testSet$transaction_error)
+```
+Logistic Regression Model
+```{r}
+model <- glm(transaction_error ~ transfer_amount , 
+             data = set2, family = binomial)
+summary(model)
+plot(model)
+```
+
+
+```{r}
+set.seed(343)
+trainIndex <- createDataPartition(set2$transaction_error, p = .75, list = FALSE,times = 1)
+train <- set2[trainIndex,]
+valid <- set2[-trainIndex,]
+```
+
+
+Logistic Regression Model
+```{r}
+model <- glm(transaction_error ~. , 
+             data = train, family = binomial)
+summary(model)
+plot(model)
+```
+
+
+accuracy 
+```{r}
+predict_reg <- predict(model, valid, type = 'response')
+y_predicted <- ifelse(predict_reg > 0.5, 1, 0)
+y_predicted <- as.factor(y_predicted)
+str(y_predicted)
+table(y_predicted, valid$transaction_error)
+accuracy <- table(y_predicted, (valid$transaction_error))
+sum(diag(accuracy))/sum(accuracy)
+```
